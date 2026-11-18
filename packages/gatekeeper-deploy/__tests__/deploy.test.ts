@@ -1,0 +1,211 @@
+import { describe, expect, it } from "vitest";
+import type { WorkersApi } from "../src/cloudflare-api.js";
+import {
+  MAIN_MODULE_DEFAULT,
+  uploadMetadata,
+  validateBindingOwnership,
+  validateSpecShape,
+  workerNameAllowed,
+} from "../src/spec-validation.js";
+import {
+  DeploySessionImpl,
+  DEPLOY_WORKER_RESOURCE,
+  describeDeployAccount,
+  describeDeployVendor,
+  parseDeployUrl,
+} from "../src/deploy.js";
+import type { DeploySpec } from "../src/types.js";
+
+const HELLO: DeploySpec = {
+  modules: {
+    "worker.js": "export default { async fetch() { return new Response('hi'); } };",
+  },
+};
+
+describe("deploy gatekeeper metadata", () => {
+  it("describes an auto-provisioned vendor and account", () => {
+    expect(describeDeployVendor()).toMatchObject({
+      displayName: "Workshop Deploy",
+      autoProvisionsAccount: true,
+      providesAuth: false,
+    });
+    expect(describeDeployAccount().displayName).toBe("Workshop Deploy");
+    expect(DEPLOY_WORKER_RESOURCE.urlPattern).toBe("deploy://workers/*");
+  });
+});
+
+describe("parseDeployUrl", () => {
+  it("accepts a prefixed worker name", () => {
+    expect(parseDeployUrl("deploy://workers/cg-terrific-tiger", "cg-")).toEqual({
+      workerName: "cg-terrific-tiger",
+    });
+  });
+
+  it("rejects workers outside the prefix", () => {
+    expect(() => parseDeployUrl("deploy://workers/nimbus-labs-os-backend", "cg-"))
+      .toThrow(/not deployable/);
+  });
+
+  it("rejects bare prefix and malformed URLs", () => {
+    expect(() => parseDeployUrl("deploy://workers/cg-", "cg-")).toThrow();
+    expect(() => parseDeployUrl("https://example.com/workers/cg-x", "cg-")).toThrow();
+  });
+
+  it("accepts the empty prefix only for well-formed names", () => {
+    expect(workerNameAllowed("anything-goes", "")).toBe(true);
+    expect(workerNameAllowed("-leading-dash", "")).toBe(false);
+  });
+});
+
+describe("validateSpecShape", () => {
+  it("accepts a minimal module worker", () => {
+    let result = validateSpecShape(HELLO);
+    expect(result).toEqual({ ok: true, errors: [], warnings: [] });
+  });
+
+  it("requires the main module among the parts", () => {
+    let result = validateSpecShape({ modules: { "other.js": "export {};" } });
+    expect(result.ok).toBe(false);
+    expect(result.errors.join()).toMatch(/worker\.js.*not among/);
+  });
+
+  it("rejects oversized sources", () => {
+    let result = validateSpecShape({
+      modules: { "worker.js": "x".repeat(9 * 1024 * 1024) },
+    });
+    expect(result.errors.join()).toMatch(/bytes/);
+  });
+
+  it("rejects binding/var name collisions", () => {
+    let result = validateSpecShape({
+      ...HELLO,
+      bindings: [{ type: "r2_bucket", name: "BUCKET", bucketName: "cg-x-assets" }],
+      vars: { BUCKET: "collide" },
+    });
+    expect(result.errors.join()).toMatch(/both a binding and a variable/);
+  });
+
+  it("warns on credential-looking plain-text vars", () => {
+    let result = validateSpecShape({ ...HELLO, vars: { API_TOKEN: "hunter2" } });
+    expect(result.ok).toBe(true);
+    expect(result.warnings.join()).toMatch(/looks like a credential/);
+  });
+});
+
+describe("uploadMetadata", () => {
+  it("maps bindings and vars into multipart metadata", () => {
+    let metadata = uploadMetadata({
+      ...HELLO,
+      compatibilityFlags: ["nodejs_compat"],
+      bindings: [{ type: "kv_namespace", name: "KV", namespaceId: "abc" }],
+      vars: { MODE: "test" },
+      message: "first deploy",
+    }, "2026-09-04");
+    expect(metadata).toEqual({
+      main_module: MAIN_MODULE_DEFAULT,
+      compatibility_date: "2026-09-04",
+      compatibility_flags: ["nodejs_compat"],
+      bindings: [
+        { type: "kv_namespace", name: "KV", namespace_id: "abc" },
+        { type: "plain_text", name: "MODE", text: "test" },
+      ],
+      annotations: { "workers/message": "first deploy" },
+    });
+  });
+});
+
+describe("validateBindingOwnership", () => {
+  function fakeApi(overrides: Partial<WorkersApi>): WorkersApi {
+    return overrides as WorkersApi;
+  }
+
+  it("passes resources named after the worker", async () => {
+    let errors = await validateBindingOwnership({
+      ...HELLO,
+      bindings: [
+        { type: "kv_namespace", name: "KV", namespaceId: "1" },
+        { type: "d1", name: "DB", databaseId: "2" },
+        { type: "r2_bucket", name: "BUCKET", bucketName: "cg-a-assets" },
+      ],
+    }, "cg-a", fakeApi({
+      getKvNamespaceTitle: async () => "cg-a-sessions",
+      getD1DatabaseName: async () => "cg-a-db",
+      r2BucketExists: async () => true,
+    }));
+    expect(errors).toEqual([]);
+  });
+
+  it("rejects another worker's resources", async () => {
+    let errors = await validateBindingOwnership({
+      ...HELLO,
+      bindings: [
+        { type: "kv_namespace", name: "KV", namespaceId: "1" },
+        { type: "r2_bucket", name: "BUCKET", bucketName: "cg-b-assets" },
+      ],
+    }, "cg-a", fakeApi({
+      getKvNamespaceTitle: async () => "cg-b-sessions",
+    }));
+    expect(errors.join()).toMatch(/not owned by "cg-a"/);
+    expect(errors.join()).toMatch(/cg-b-assets/);
+  });
+
+  it("rejects missing resources", async () => {
+    let errors = await validateBindingOwnership({
+      ...HELLO,
+      bindings: [{ type: "d1", name: "DB", databaseId: "gone" }],
+    }, "cg-a", fakeApi({ getD1DatabaseName: async () => null }));
+    expect(errors.join()).toMatch(/does not exist/);
+  });
+});
+
+describe("DeploySessionImpl", () => {
+  function fakeQueue() {
+    let observations: unknown[] = [];
+    return {
+      observations,
+      authorizeObservation(value: unknown) {
+        observations.push(value);
+        return Promise.resolve();
+      },
+    };
+  }
+
+  it("authorizes the observation before returning the target", async () => {
+    let queue = fakeQueue();
+    let session = new DeploySessionImpl(
+      queue,
+      { getSubdomain: async () => "nimbus-labs" } as unknown as WorkersApi,
+      "cg-terrific-tiger",
+      "cg-",
+      "2026-09-04",
+    );
+    await expect(session.getTarget()).resolves.toEqual({
+      workerName: "cg-terrific-tiger",
+      workerPrefix: "cg-",
+      url: "https://cg-terrific-tiger.nimbus-labs.workers.dev",
+    });
+    expect(queue.observations).toHaveLength(1);
+  });
+
+  it("refuses to deploy a spec with validation errors", async () => {
+    let session = new DeploySessionImpl(
+      fakeQueue(),
+      {} as WorkersApi,
+      "cg-terrific-tiger",
+      "cg-",
+      "2026-09-04",
+    );
+    await expect(session.deploy({ modules: {} })).rejects.toThrow(/Deploy refused/);
+  });
+
+  it("refuses to roll back to an unknown version", async () => {
+    let session = new DeploySessionImpl(
+      fakeQueue(),
+      { listVersions: async () => [{ id: "v1", number: 1 }] } as unknown as WorkersApi,
+      "cg-terrific-tiger",
+      "cg-",
+      "2026-09-04",
+    );
+    await expect(session.rollback("nope")).rejects.toThrow(/not among/);
+  });
+});

@@ -18,10 +18,21 @@
     "scheduler": { "name": "nimbus-labs-os-scheduler" },
     "websearch": { "name": "nimbus-labs-os-websearch" },
     "customGatekeeper": { "name": "nimbus-labs-os-gk-custom" },
+    "deployGatekeeper": { "name": "nimbus-labs-os-gk-deploy" },
     "errorReporter": { "name": "nimbus-labs-os-errors" }
   },
 
   "gatekeepers": {},
+
+  // Deploy Gatekeeper (packages/gatekeeper-deploy): lets attendee workspaces deploy their
+  // ChangeGuard apps to their own roster Workers. Isolation boundary: Worker names must start
+  // with this prefix, and bound KV/D1/R2 resources must be named after the Worker. The
+  // CLOUDFLARE_API_TOKEN secret on nimbus-labs-os-gk-deploy is the only credential, scoped
+  // Workers Scripts:Edit + storage read on this account.
+  "deployGatekeeper": {
+    "enabled": true,
+    "workerPrefix": "cg-"
+  },
 
   // Self-hosted Access application protecting os.nimbuslabs.io; One-time PIN
   // sign-in. "admins" gates /admin.

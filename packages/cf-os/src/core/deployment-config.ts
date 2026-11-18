@@ -120,6 +120,8 @@ export interface DeploymentConfig {
     websearch: { name: string };
     /** Only required when `customGatekeeper.enabled` is not false. */
     customGatekeeper?: { name: string };
+    /** Only required when the `deployGatekeeper` section is present and not disabled. */
+    deployGatekeeper?: { name: string };
     /** Only required when `errorReporting.enabled`. */
     errorReporter?: { name: string };
   };
@@ -137,6 +139,18 @@ export interface DeploymentConfig {
    * text it serves to agents, which only matters when it is.
    */
   customGatekeeper: { enabled?: boolean; name: string; message: string };
+  /**
+   * The Deploy Gatekeeper: lets workspaces deploy application code to prefix-scoped Workers on
+   * this account. Absent means not deployed; `enabled: false` disables it explicitly.
+   * `workerPrefix` is the isolation boundary -- deployable Worker names, and the resources they
+   * may bind, must start with it.
+   */
+  deployGatekeeper?: {
+    enabled?: boolean;
+    workerPrefix: string;
+    /** Default compatibility date for deploys when a spec omits one. */
+    compatibilityDate?: string;
+  };
   /** Private explicit-issue destination. */
   errorReporting: { enabled: boolean; environment?: string; release?: string | null };
   /** Workshop KV/R2. `null` requests Wrangler automatic provisioning. */
@@ -210,6 +224,8 @@ export interface GeneratedConfigs {
   websearch: ProdWranglerConfig;
   /** Absent when `customGatekeeper.enabled` is false. */
   customGatekeeper?: ProdWranglerConfig;
+  /** Absent when the `deployGatekeeper` section is absent or disabled. */
+  deployGatekeeper?: ProdWranglerConfig;
   /** Absent when `errorReporting.enabled` is false. */
   errorReporter?: ProdWranglerConfig;
   /** One per `gatekeepers` entry, by slug. */
@@ -224,6 +240,7 @@ export interface BaseConfigs {
   scheduler: ProdWranglerConfig;
   websearch: ProdWranglerConfig;
   customGatekeeper: ProdWranglerConfig;
+  deployGatekeeper: ProdWranglerConfig;
   errorReporter: ProdWranglerConfig;
 }
 

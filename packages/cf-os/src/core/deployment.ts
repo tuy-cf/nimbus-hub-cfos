@@ -28,6 +28,7 @@ export const PACKAGE_DIRS = {
   scheduler: "cloudflare-os/packages/gatekeeper-scheduler",
   websearch: "cloudflare-os/packages/gatekeeper-websearch",
   customGatekeeper: "packages/custom-gatekeeper",
+  deployGatekeeper: "packages/gatekeeper-deploy",
   errorReporter: "packages/error-reporter",
 } as const;
 
@@ -84,6 +85,14 @@ export function customGatekeeperEnabled(config: DeploymentConfig): boolean {
   return config.customGatekeeper?.enabled !== false;
 }
 
+/**
+ * Whether the Deploy Gatekeeper is deployed. Opt-in rather than on-by-default: it holds a real
+ * account credential, so a deployment only gets one when its operator asked for it.
+ */
+export function deployGatekeeperEnabled(config: DeploymentConfig): boolean {
+  return config.deployGatekeeper !== undefined && config.deployGatekeeper.enabled !== false;
+}
+
 /** The slugs of the optional Gatekeepers `config` selects. */
 export function gatekeeperSlugs(config: DeploymentConfig): string[] {
   return Object.keys(config.gatekeepers ?? {});
@@ -132,6 +141,11 @@ const customGatekeeperPaths = [
   "workers.customGatekeeper.name",
   "customGatekeeper.name",
   "customGatekeeper.message",
+];
+
+const deployGatekeeperPaths = [
+  "workers.deployGatekeeper.name",
+  "deployGatekeeper.workerPrefix",
 ];
 
 /**
@@ -249,9 +263,11 @@ export class PlaceholderError extends Error {}
  */
 export function validateConfig(config: DeploymentConfig): DeploymentConfig {
   const customGatekeeper = customGatekeeperEnabled(config);
+  const deployGatekeeper = deployGatekeeperEnabled(config);
   const activePaths = [
     ...requiredPaths,
     ...(customGatekeeper ? customGatekeeperPaths : []),
+    ...(deployGatekeeper ? deployGatekeeperPaths : []),
     ...(config.aiGateway?.enabled ? aiGatewayPaths : []),
     ...(config.errorReporting?.enabled ? errorReportingPaths : []),
   ];
@@ -284,6 +300,13 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
       ...activeConfig,
       workers: { ...activeConfig.workers, customGatekeeper: undefined },
       customGatekeeper: { enabled: false } as DeploymentConfig["customGatekeeper"],
+    };
+  }
+  if (!deployGatekeeper) {
+    activeConfig = {
+      ...activeConfig,
+      workers: { ...activeConfig.workers, deployGatekeeper: undefined },
+      deployGatekeeper: undefined,
     };
   }
   const placeholder = JSON.stringify(activeConfig).match(/<[^>]+>/)?.[0];
@@ -638,6 +661,9 @@ export function generateConfigs(
   const customGatekeeper = customGatekeeperEnabled(config)
     ? structuredClone(bases.customGatekeeper)
     : undefined;
+  const deployGatekeeper = deployGatekeeperEnabled(config)
+    ? structuredClone(bases.deployGatekeeper)
+    : undefined;
   const errorReporter = config.errorReporting.enabled
     ? structuredClone(bases.errorReporter)
     : undefined;
@@ -654,6 +680,9 @@ export function generateConfigs(
     { binding: "GATEKEEPER_WEBSEARCH", service: config.workers.websearch.name },
     ...(customGatekeeper
       ? [{ binding: "GATEKEEPER_CUSTOM", service: config.workers.customGatekeeper!.name }]
+      : []),
+    ...(deployGatekeeper
+      ? [{ binding: "GATEKEEPER_DEPLOY", service: config.workers.deployGatekeeper!.name }]
       : []),
     ...optional.map(([slug, entry]) => ({ binding: gatekeeperBinding(slug), service: entry.name })),
   ];
@@ -728,6 +757,11 @@ export function generateConfigs(
       service: config.workers.customGatekeeper!.name,
       entrypoint: "GatekeeperVendor",
     }] : []),
+    ...(deployGatekeeper ? [{
+      binding: "GATEKEEPER_DEPLOY",
+      service: config.workers.deployGatekeeper!.name,
+      entrypoint: "GatekeeperVendor",
+    }] : []),
     // No props: upstream's deploy service passes none to any Gatekeeper but Context
     // (`propsByPackage` in cloudflare-os/scripts/release/manifest-lib.ts).
     ...optional.map(([slug, entry]) => ({
@@ -784,6 +818,18 @@ export function generateConfigs(
     };
   }
 
+  if (deployGatekeeper) {
+    setCommon(deployGatekeeper, config, config.workers.deployGatekeeper!.name);
+    deployGatekeeper.vars = {
+      CLOUDFLARE_ACCOUNT_ID: config.accountId,
+      DEPLOY_WORKER_PREFIX: config.deployGatekeeper!.workerPrefix,
+      DEPLOY_COMPATIBILITY_DATE: config.deployGatekeeper!.compatibilityDate ?? "2026-09-04",
+    };
+    // The account credential the gatekeeper deploys with. Never a var: `cf-os secrets` / wrangler
+    // secret put keeps it off disk, and wrangler refuses the deploy while it is missing.
+    deployGatekeeper.secrets = { required: ["CLOUDFLARE_API_TOKEN"] };
+  }
+
   if (errorReporter) {
     setCommon(errorReporter, config, config.workers.errorReporter!.name);
   }
@@ -810,6 +856,7 @@ export function generateConfigs(
   return {
     router, workshop, context, scheduler, websearch,
     ...(customGatekeeper && { customGatekeeper }),
+    ...(deployGatekeeper && { deployGatekeeper }),
     ...(errorReporter && { errorReporter }),
     gatekeepers,
   };
@@ -867,6 +914,7 @@ export function buildCommands(config: DeploymentConfig, catalog: GatekeeperCatal
     // A type-check only: wrangler's own build command runs capnweb-validate at deploy time.
     [{ args: submoduleBuild("@gadgets/gatekeeper-websearch") }],
     ...(customGatekeeperEnabled(config) ? [[{ args: ownBuild("custom-gatekeeper") }]] : []),
+    ...(deployGatekeeperEnabled(config) ? [[{ args: ownBuild("gatekeeper-deploy") }]] : []),
     ...(config.errorReporting.enabled ? [[{ args: ownBuild("error-reporter") }]] : []),
     // One step each. Every optional Gatekeeper's `build` task depends on `build:configurator`, the
     // codegen (cloudflare-os/scripts/gatekeeper-configurator-vite-config.ts), and the outer
@@ -895,6 +943,7 @@ export function deployWaves(config: DeploymentConfig): WorkerId[][] {
       ...(config.errorReporting.enabled ? ["errorReporter" as const] : []),
       "context", "scheduler", "websearch",
       ...(customGatekeeperEnabled(config) ? ["customGatekeeper" as const] : []),
+      ...(deployGatekeeperEnabled(config) ? ["deployGatekeeper" as const] : []),
       ...gatekeeperSlugs(config).map(gatekeeperWorkerId),
     ],
     ["workshop"],

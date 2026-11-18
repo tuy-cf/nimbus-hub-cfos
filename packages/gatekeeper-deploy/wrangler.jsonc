@@ -1,0 +1,26 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "gatekeeper-deploy",
+  "main": ".wrangler/validate/src/index.ts",
+  "build": {
+    "command": "pnpm exec capnweb-validate build --out .wrangler/validate",
+    "watch_dir": "src"
+  },
+  "compatibility_date": "2026-09-04",
+  "compatibility_flags": ["allow_irrevocable_stub_storage", "nodejs_compat"],
+  "migrations": [
+    {
+      "tag": "v0",
+      "new_sqlite_classes": ["DeployGatekeeper"]
+    }
+  ],
+  "vars": {
+    "DEPLOY_WORKER_PREFIX": "cg-",
+    "DEPLOY_COMPATIBILITY_DATE": "2026-09-04"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": { "invocation_logs": false }
+  }
+}

@@ -36,6 +36,7 @@ const validConfig: DeploymentConfig = {
     scheduler: { name: "acme-cloudflare-os-scheduler" },
     websearch: { name: "acme-cloudflare-os-websearch" },
     customGatekeeper: { name: "acme-cloudflare-os-custom" },
+    deployGatekeeper: { name: "acme-cloudflare-os-deploy" },
     errorReporter: { name: "acme-cloudflare-os-errors" },
   },
   access: {
@@ -55,6 +56,7 @@ const validConfig: DeploymentConfig = {
     artifacts: { enabled: true, namespace: "acme-context-collections" },
   },
   customGatekeeper: { name: "Acme", message: "Use the company handbook." },
+  deployGatekeeper: { workerPrefix: "cg-" },
   errorReporting: { enabled: true, environment: "production", release: "abc123" },
   resources: {
     blueprintsKvNamespaceId: "blueprints-kv-id",
@@ -246,6 +248,11 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
       service: "acme-cloudflare-os-custom",
       entrypoint: "GatekeeperVendor",
     },
+    {
+      binding: "GATEKEEPER_DEPLOY",
+      service: "acme-cloudflare-os-deploy",
+      entrypoint: "GatekeeperVendor",
+    },
   ]);
   assert.deepEqual(generated.workshop.kv_namespaces, [
     { binding: "BLUEPRINTS", id: "blueprints-kv-id" },
@@ -263,6 +270,14 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
     CUSTOM_NAME: "Acme",
     CUSTOM_MESSAGE: "Use the company handbook.",
   });
+  assert.equal(generated.deployGatekeeper!.name, "acme-cloudflare-os-deploy");
+  assert.deepEqual(generated.deployGatekeeper!.vars, {
+    CLOUDFLARE_ACCOUNT_ID: "0123456789abcdef0123456789abcdef",
+    DEPLOY_WORKER_PREFIX: "cg-",
+    DEPLOY_COMPATIBILITY_DATE: "2026-09-04",
+  });
+  // The account credential is a secret, never a var.
+  assert.deepEqual(generated.deployGatekeeper!.secrets, { required: ["CLOUDFLARE_API_TOKEN"] });
   assert.equal(generated.errorReporter!.name, "acme-cloudflare-os-errors");
   assert.deepEqual(generated.workshop.observability!.logs, {
     invocation_logs: false,
@@ -290,6 +305,7 @@ test("gives the router the public route, the frontend, and every service binding
     { binding: "GATEKEEPER_SCHEDULER", service: "acme-cloudflare-os-scheduler" },
     { binding: "GATEKEEPER_WEBSEARCH", service: "acme-cloudflare-os-websearch" },
     { binding: "GATEKEEPER_CUSTOM", service: "acme-cloudflare-os-custom" },
+    { binding: "GATEKEEPER_DEPLOY", service: "acme-cloudflare-os-deploy" },
   ]);
   // Inherited untouched: the base config already carries the ASSETS binding, the SPA fallback, and
   // the /gatekeeper/* prefix an OAuth Gatekeeper redirect needs.
@@ -682,7 +698,7 @@ test("builds what depends on itself in order, and everything else independently"
     assert.deepEqual(chain?.map((command) => command.split(" ").at(-1)), ["build:app", "build"], pkg);
   }
   // Every other package is a chain of its own.
-  assert.deepEqual(chains.map((chain) => chain.length), [2, 2, 1, 1, 1, 1, 1, 1]);
+  assert.deepEqual(chains.map((chain) => chain.length), [2, 2, 1, 1, 1, 1, 1, 1, 1]);
   // The frontend and the router included: it is the router's deploy, not its build, that reads
   // ../workshop-frontend/dist, and every build finishes before anything deploys.
   const frontend = chains.findIndex((chain) => chain.some((command) => command.includes("workshop-frontend")));
@@ -716,11 +732,11 @@ const withOptional = variant((c) => {
 
 test("deploys the Gatekeepers together, then the Workshop, then the router", () => {
   assert.deepEqual(deployWaves(validConfig),
-    [["errorReporter", "context", "scheduler", "websearch", "customGatekeeper"], ["workshop"], ["router"]]);
+    [["errorReporter", "context", "scheduler", "websearch", "customGatekeeper", "deployGatekeeper"], ["workshop"], ["router"]]);
   assert.deepEqual(deployWaves(variant((config) => { config.errorReporting.enabled = false; })),
-    [["context", "scheduler", "websearch", "customGatekeeper"], ["workshop"], ["router"]]);
+    [["context", "scheduler", "websearch", "customGatekeeper", "deployGatekeeper"], ["workshop"], ["router"]]);
   assert.deepEqual(deployWaves(withOptional), [
-    ["errorReporter", "context", "scheduler", "websearch", "gatekeepers.github", "gatekeepers.mcpportal"],
+    ["errorReporter", "context", "scheduler", "websearch", "deployGatekeeper", "gatekeepers.github", "gatekeepers.mcpportal"],
     ["workshop"],
     ["router"],
   ]);
@@ -750,9 +766,9 @@ test("deploys every Worker after each one it binds", async () => {
 test("deploys every Worker before the router that binds them", () => {
   assert.deepEqual(deployOrder(validConfig), deployWaves(validConfig).flat());
   assert.deepEqual(deployOrder(validConfig),
-    ["errorReporter", "context", "scheduler", "websearch", "customGatekeeper", "workshop", "router"]);
+    ["errorReporter", "context", "scheduler", "websearch", "customGatekeeper", "deployGatekeeper", "workshop", "router"]);
   assert.deepEqual(deployOrder(variant((config) => { config.errorReporting.enabled = false; })),
-    ["context", "scheduler", "websearch", "customGatekeeper", "workshop", "router"]);
+    ["context", "scheduler", "websearch", "customGatekeeper", "deployGatekeeper", "workshop", "router"]);
   // Every package the deploy reads a base config from is deployed, and nothing else.
   assert.deepEqual(new Set(deployOrder(validConfig)), new Set(Object.keys(PACKAGE_DIRS)));
 });

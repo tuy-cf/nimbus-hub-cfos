@@ -15,7 +15,7 @@
     }
   ],
   "vars": {
-    "DEPLOY_WORKER_PREFIX": "cg-",
+    "DEPLOY_WORKER_PREFIX": "changeguard-",
     "DEPLOY_COMPATIBILITY_DATE": "2026-09-04"
   },
   "observability": {

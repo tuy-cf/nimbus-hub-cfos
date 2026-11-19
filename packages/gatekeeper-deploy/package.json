@@ -5,7 +5,8 @@
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
-    "types:check": "tsc --noEmit"
+    "types:check": "tsc --noEmit",
+    "gen:configurator": "gadgets-build-configurator . && node -e \"const fs=require('fs');const html=fs.readFileSync('src/generated/deploy-configurator-ui.txt','utf8');fs.writeFileSync('src/generated/deploy-configurator-html.ts','// Generated from deploy-configurator-ui.txt by the gen:configurator script; do not edit.\\nexport default '+JSON.stringify(html)+';\\n');console.log('generated deploy-configurator-html.ts,',html.length,'chars');\""
   },
   "dependencies": {
     "@gadgets/configurator-ui": "link:../../cloudflare-os/packages/configurator-ui",

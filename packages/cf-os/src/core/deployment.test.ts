@@ -56,7 +56,7 @@ const validConfig: DeploymentConfig = {
     artifacts: { enabled: true, namespace: "acme-context-collections" },
   },
   customGatekeeper: { name: "Acme", message: "Use the company handbook." },
-  deployGatekeeper: { workerPrefix: "cg-" },
+  deployGatekeeper: { workerPrefix: "changeguard-" },
   errorReporting: { enabled: true, environment: "production", release: "abc123" },
   resources: {
     blueprintsKvNamespaceId: "blueprints-kv-id",
@@ -273,7 +273,7 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
   assert.equal(generated.deployGatekeeper!.name, "acme-cloudflare-os-deploy");
   assert.deepEqual(generated.deployGatekeeper!.vars, {
     CLOUDFLARE_ACCOUNT_ID: "0123456789abcdef0123456789abcdef",
-    DEPLOY_WORKER_PREFIX: "cg-",
+    DEPLOY_WORKER_PREFIX: "changeguard-",
     DEPLOY_COMPATIBILITY_DATE: "2026-09-04",
   });
   // The account credential is a secret, never a var.

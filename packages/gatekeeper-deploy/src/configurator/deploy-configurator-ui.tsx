@@ -25,7 +25,7 @@ export default {
         <TextInput
           name="workerName"
           value={values.workerName}
-          placeholder="cg-your-slot"
+          placeholder="changeguard-your-slot"
           onChange={async workerName => {
             let error = workerName ? await ui.checkWorkerName(workerName) : null;
             setValues({ workerName, error });

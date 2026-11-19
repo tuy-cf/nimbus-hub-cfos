@@ -37,7 +37,7 @@ import type {
   DeployVersionSummary,
 } from "./types.js";
 import TYPES_CODE from "./types-code.js";
-import DEPLOY_CONFIGURATOR_HTML from "./generated/deploy-configurator-ui.txt";
+import DEPLOY_CONFIGURATOR_HTML from "./generated/deploy-configurator-html.js";
 import { DeployConfiguratorUI } from "./configurator/deploy-configurator-rpc.js";
 
 export const DEPLOY_RESOURCE_URL_PATTERN = "deploy://workers/*";

@@ -31,7 +31,7 @@
   // Workers Scripts:Edit + storage read on this account.
   "deployGatekeeper": {
     "enabled": true,
-    "workerPrefix": "cg-"
+    "workerPrefix": "changeguard-"
   },
 
   // Self-hosted Access application protecting os.nimbuslabs.io; One-time PIN

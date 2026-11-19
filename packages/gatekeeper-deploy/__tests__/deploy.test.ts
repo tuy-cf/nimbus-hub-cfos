@@ -36,19 +36,19 @@ describe("deploy gatekeeper metadata", () => {
 
 describe("parseDeployUrl", () => {
   it("accepts a prefixed worker name", () => {
-    expect(parseDeployUrl("deploy://workers/cg-terrific-tiger", "cg-")).toEqual({
-      workerName: "cg-terrific-tiger",
+    expect(parseDeployUrl("deploy://workers/changeguard-terrific-tiger", "changeguard-")).toEqual({
+      workerName: "changeguard-terrific-tiger",
     });
   });
 
   it("rejects workers outside the prefix", () => {
-    expect(() => parseDeployUrl("deploy://workers/nimbus-labs-os-backend", "cg-"))
+    expect(() => parseDeployUrl("deploy://workers/nimbus-labs-os-backend", "changeguard-"))
       .toThrow(/not deployable/);
   });
 
   it("rejects bare prefix and malformed URLs", () => {
-    expect(() => parseDeployUrl("deploy://workers/cg-", "cg-")).toThrow();
-    expect(() => parseDeployUrl("https://example.com/workers/cg-x", "cg-")).toThrow();
+    expect(() => parseDeployUrl("deploy://workers/changeguard-", "changeguard-")).toThrow();
+    expect(() => parseDeployUrl("https://example.com/workers/changeguard-x", "changeguard-")).toThrow();
   });
 
   it("accepts the empty prefix only for well-formed names", () => {
@@ -79,7 +79,7 @@ describe("validateSpecShape", () => {
   it("rejects binding/var name collisions", () => {
     let result = validateSpecShape({
       ...HELLO,
-      bindings: [{ type: "r2_bucket", name: "BUCKET", bucketName: "cg-x-assets" }],
+      bindings: [{ type: "r2_bucket", name: "BUCKET", bucketName: "changeguard-x-assets" }],
       vars: { BUCKET: "collide" },
     });
     expect(result.errors.join()).toMatch(/both a binding and a variable/);
@@ -125,11 +125,11 @@ describe("validateBindingOwnership", () => {
       bindings: [
         { type: "kv_namespace", name: "KV", namespaceId: "1" },
         { type: "d1", name: "DB", databaseId: "2" },
-        { type: "r2_bucket", name: "BUCKET", bucketName: "cg-a-assets" },
+        { type: "r2_bucket", name: "BUCKET", bucketName: "changeguard-a-assets" },
       ],
-    }, "cg-a", fakeApi({
-      getKvNamespaceTitle: async () => "cg-a-sessions",
-      getD1DatabaseName: async () => "cg-a-db",
+    }, "changeguard-a", fakeApi({
+      getKvNamespaceTitle: async () => "changeguard-a-sessions",
+      getD1DatabaseName: async () => "changeguard-a-db",
       r2BucketExists: async () => true,
     }));
     expect(errors).toEqual([]);
@@ -140,20 +140,20 @@ describe("validateBindingOwnership", () => {
       ...HELLO,
       bindings: [
         { type: "kv_namespace", name: "KV", namespaceId: "1" },
-        { type: "r2_bucket", name: "BUCKET", bucketName: "cg-b-assets" },
+        { type: "r2_bucket", name: "BUCKET", bucketName: "changeguard-b-assets" },
       ],
-    }, "cg-a", fakeApi({
-      getKvNamespaceTitle: async () => "cg-b-sessions",
+    }, "changeguard-a", fakeApi({
+      getKvNamespaceTitle: async () => "changeguard-b-sessions",
     }));
-    expect(errors.join()).toMatch(/not owned by "cg-a"/);
-    expect(errors.join()).toMatch(/cg-b-assets/);
+    expect(errors.join()).toMatch(/not owned by "changeguard-a"/);
+    expect(errors.join()).toMatch(/changeguard-b-assets/);
   });
 
   it("rejects missing resources", async () => {
     let errors = await validateBindingOwnership({
       ...HELLO,
       bindings: [{ type: "d1", name: "DB", databaseId: "gone" }],
-    }, "cg-a", fakeApi({ getD1DatabaseName: async () => null }));
+    }, "changeguard-a", fakeApi({ getD1DatabaseName: async () => null }));
     expect(errors.join()).toMatch(/does not exist/);
   });
 });
@@ -175,14 +175,14 @@ describe("DeploySessionImpl", () => {
     let session = new DeploySessionImpl(
       queue,
       { getSubdomain: async () => "nimbus-labs" } as unknown as WorkersApi,
-      "cg-terrific-tiger",
-      "cg-",
+      "changeguard-terrific-tiger",
+      "changeguard-",
       "2026-09-04",
     );
     await expect(session.getTarget()).resolves.toEqual({
-      workerName: "cg-terrific-tiger",
-      workerPrefix: "cg-",
-      url: "https://cg-terrific-tiger.nimbus-labs.workers.dev",
+      workerName: "changeguard-terrific-tiger",
+      workerPrefix: "changeguard-",
+      url: "https://changeguard-terrific-tiger.nimbus-labs.workers.dev",
     });
     expect(queue.observations).toHaveLength(1);
   });
@@ -191,8 +191,8 @@ describe("DeploySessionImpl", () => {
     let session = new DeploySessionImpl(
       fakeQueue(),
       {} as WorkersApi,
-      "cg-terrific-tiger",
-      "cg-",
+      "changeguard-terrific-tiger",
+      "changeguard-",
       "2026-09-04",
     );
     await expect(session.deploy({ modules: {} })).rejects.toThrow(/Deploy refused/);
@@ -202,8 +202,8 @@ describe("DeploySessionImpl", () => {
     let session = new DeploySessionImpl(
       fakeQueue(),
       { listVersions: async () => [{ id: "v1", number: 1 }] } as unknown as WorkersApi,
-      "cg-terrific-tiger",
-      "cg-",
+      "changeguard-terrific-tiger",
+      "changeguard-",
       "2026-09-04",
     );
     await expect(session.rollback("nope")).rejects.toThrow(/not among/);

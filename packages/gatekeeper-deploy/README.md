@@ -10,10 +10,10 @@ their own roster-assigned Worker, and nobody's workspace can reach anyone else's
   (`CLOUDFLARE_API_TOKEN` secret) scoped Workers Scripts:Edit plus KV/D1/R2 read on the workshop
   account. Workspaces and agents never see it; they call the session API over RPC.
 - **One Worker per binding.** A session is bound to `deploy://workers/<worker-name>`, and the
-  name must start with the configured `DEPLOY_WORKER_PREFIX` (`cg-` for ChangeGuard). Every
+  name must start with the configured `DEPLOY_WORKER_PREFIX` (`changeguard-` for ChangeGuard). Every
   mutation is confined to that Worker.
 - **Owned bindings only.** A deploy may attach KV/D1/R2 resources whose own names start with the
-  Worker's name (`cg-terrific-tiger-sessions`, `cg-terrific-tiger-db`, ...), verified against the
+  Worker's name (`changeguard-terrific-tiger-sessions`, `changeguard-terrific-tiger-db`, ...), verified against the
   account before upload. No secrets, service bindings, Durable Objects, or static assets in this
   phase.
 - **No secret values ever.** `vars` are plain text. Secrets are set out of band
@@ -47,7 +47,7 @@ before `deploy` and fix reported errors; `deploy` refuses invalid specs.
 ## Check
 
 ```sh
-pnpm exec gadgets-build-configurator .   # regenerates src/generated/deploy-configurator-ui.txt
+pnpm run gen:configurator   # rebuilds the configurator HTML and its importable TS module
 pnpm run types:check
 pnpm exec vitest run
 pnpm exec wrangler deploy --dry-run

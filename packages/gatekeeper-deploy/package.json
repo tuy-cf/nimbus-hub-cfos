@@ -11,6 +11,7 @@
   "dependencies": {
     "@gadgets/configurator-ui": "link:../../cloudflare-os/packages/configurator-ui",
     "@gadgets/workshop-shared": "link:../../cloudflare-os/packages/workshop-shared",
+    "acorn": "^8.19.0",
     "capnweb": "catalog:",
     "capnweb-validate": "catalog:"
   },

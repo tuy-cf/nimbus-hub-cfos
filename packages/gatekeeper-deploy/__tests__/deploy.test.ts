@@ -76,6 +76,39 @@ describe("validateSpecShape", () => {
     expect(result.errors.join()).toMatch(/bytes/);
   });
 
+  it("catches an unterminated string at validate time, naming the module and position", () => {
+    // The exact failure the first smoke test hit: validate passed, deploy surfaced the error.
+    let result = validateSpecShape({
+      modules: { "worker.js": 'export default { fetch() { return new Response("hi\n"); } };' },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.join()).toMatch(/worker\.js.*syntax error/i);
+    expect(result.errors.join()).toMatch(/\(\d+:\d+\)/);
+  });
+
+  it("names the failing module among several parts", () => {
+    let result = validateSpecShape({
+      modules: {
+        "worker.js": 'import { helper } from "./helper.js"; export default { fetch: helper };',
+        "helper.js": "export function helper( {",
+      },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.join()).toMatch(/helper\.js/);
+    expect(result.errors.join()).not.toMatch(/worker\.js.*syntax/i);
+  });
+
+  it("accepts valid multi-module sources and skips non-JS parts", () => {
+    let result = validateSpecShape({
+      modules: {
+        "worker.js": 'import { helper } from "./helper.js"; export default { fetch: helper };',
+        "helper.js": "export const helper = () => new Response('ok');",
+        "notes.txt": "this is { not JavaScript",
+      },
+    });
+    expect(result).toEqual({ ok: true, errors: [], warnings: [] });
+  });
+
   it("rejects binding/var name collisions", () => {
     let result = validateSpecShape({
       ...HELLO,

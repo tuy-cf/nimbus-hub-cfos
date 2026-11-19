@@ -43,7 +43,9 @@ upstream's [`write-gatekeeper` skill](../../cloudflare-os/.agents/skills/write-g
 
 See `src/types.d.ts` (and the agent-facing mirror `src/types-code.ts`): `getTarget`,
 `getStatus`, `listVersions`, `validate`, `deploy`, `rollback`. Agents should call `validate`
-before `deploy` and fix reported errors; `deploy` refuses invalid specs.
+before `deploy` and fix reported errors; `deploy` refuses invalid specs. `validate` checks
+shape, size, binding ownership, and JavaScript syntax (acorn parses every `.js`/`.mjs`
+module once the shape checks pass, reporting the module name and line:column).
 
 ## Check
 

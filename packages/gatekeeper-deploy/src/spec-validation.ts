@@ -2,6 +2,7 @@
 // testable without workerd. Shape checks are pure; binding ownership needs the account API and
 // is injected.
 
+import { parse } from "acorn";
 import type { WorkersApi } from "./cloudflare-api.js";
 import type { DeploySpec, DeployValidation } from "./types.js";
 
@@ -108,6 +109,20 @@ export function validateSpecShape(spec: DeploySpec): DeployValidation {
 
   if (spec.message !== undefined && spec.message.length > MAX_MESSAGE_LENGTH) {
     errors.push(`message is ${spec.message.length} characters; Cloudflare caps it at ${MAX_MESSAGE_LENGTH}.`);
+  }
+
+  // Syntax: parse each ES module so unterminated strings and other syntax errors fail here,
+  // with the module name and line/column, instead of surfacing as an opaque upload error at
+  // deploy(). Staged last: no point parsing a spec that is already invalid (or oversized).
+  if (errors.length === 0) {
+    for (let [part, source] of Object.entries(modules)) {
+      if (!/\.m?js$/.test(part)) continue;
+      try {
+        parse(source, { ecmaVersion: "latest", sourceType: "module" });
+      } catch (error) {
+        errors.push(`Module "${part}" has a JavaScript syntax error: ${(error as Error).message}`);
+      }
+    }
   }
 
   return { ok: errors.length === 0, errors, warnings };

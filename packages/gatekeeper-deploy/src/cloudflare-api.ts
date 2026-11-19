@@ -90,15 +90,20 @@ export class WorkersApi {
   }
 
   async listVersions(workerName: string, limit: number): Promise<ScriptVersion[]> {
-    let result = await this.#get<{ versions?: ScriptVersion[] } | ScriptVersion[]>(
+    // The live API wraps the list as result.items (not a bare array, not result.versions).
+    let result = await this.#get<{ items?: ScriptVersion[] } | ScriptVersion[]>(
       `/workers/scripts/${workerName}/versions?page_size=${limit}`,
     );
-    return Array.isArray(result) ? result : result.versions ?? [];
+    return Array.isArray(result) ? result : result.items ?? [];
   }
 
   async listDeployments(workerName: string): Promise<ScriptDeployment[]> {
     try {
-      return await this.#get(`/workers/scripts/${workerName}/deployments`);
+      // The live API wraps the list as result.deployments.
+      let result = await this.#get<{ deployments?: ScriptDeployment[] } | ScriptDeployment[]>(
+        `/workers/scripts/${workerName}/deployments`,
+      );
+      return Array.isArray(result) ? result : result.deployments ?? [];
     } catch (error) {
       if (error instanceof CloudflareApiError && error.status === 404) return [];
       throw error;

@@ -208,4 +208,50 @@ describe("DeploySessionImpl", () => {
     );
     await expect(session.rollback("nope")).rejects.toThrow(/not among/);
   });
+
+  it("rolls back to a listed version and redeploys it at 100%", async () => {
+    let deploys: unknown[][] = [];
+    let session = new DeploySessionImpl(
+      fakeQueue(),
+      {
+        listVersions: async () => [{ id: "v1", number: 1 }, { id: "v2", number: 2 }],
+        deployVersion: async (...args: unknown[]) => {
+          deploys.push(args);
+          return { id: "d1" };
+        },
+        getSubdomain: async () => null,
+      } as unknown as WorkersApi,
+      "changeguard-terrific-tiger",
+      "changeguard-",
+      "2026-09-04",
+    );
+    let result = await session.rollback("v1");
+    expect(deploys).toEqual([
+      ["changeguard-terrific-tiger", "v1", "Rollback to version 1 (v1)"],
+    ]);
+    expect(result.versionId).toBe("v1");
+    expect(result.deploymentId).toBe("d1");
+  });
+
+  it("reports the deployed version as current in getStatus", async () => {
+    let session = new DeploySessionImpl(
+      fakeQueue(),
+      {
+        getScriptSettings: async () => ({ compatibility_date: "2026-09-04", bindings: [] }),
+        listDeployments: async () => [
+          { id: "d1", versions: [{ version_id: "v2", percentage: 100 }] },
+        ],
+        listVersions: async () => [{ id: "v1", number: 1 }, { id: "v2", number: 2 }],
+        getSubdomain: async () => null,
+      } as unknown as WorkersApi,
+      "changeguard-terrific-tiger",
+      "changeguard-",
+      "2026-09-04",
+    );
+    let status = await session.getStatus();
+    expect(status.current?.versionId).toBe("v2");
+    expect(status.current?.deployed).toBe(true);
+    expect(status.recentVersions).toHaveLength(2);
+    expect(status.compatibilityDate).toBe("2026-09-04");
+  });
 });

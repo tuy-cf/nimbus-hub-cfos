@@ -18,8 +18,9 @@ their own roster-assigned Worker, and nobody's workspace can reach anyone else's
   phase.
 - **No secret values ever.** `vars` are plain text. Secrets are set out of band
   (`wrangler secret put`) and survive every deploy.
-- **Audit.** Versions and deployments carry `workers/message` and
-  `workers/triggered_by: gatekeeper-deploy` annotations.
+- **Audit.** Deployments carry a `workers/message` annotation prefixed
+  `[gatekeeper-deploy]`. (`workers/triggered_by` is platform-owned — the API rejects
+  client-supplied values with error 10210.)
 
 Phase 1 executes deploys immediately when the agent calls `deploy()`; in-UI approval
 (`submitAction`/`applyAction`), simulation, and per-observer verification are Phase 2, per

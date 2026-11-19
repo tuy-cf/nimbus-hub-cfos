@@ -122,7 +122,11 @@ export class WorkersApi {
     return this.#call("POST", `/workers/scripts/${workerName}/versions`, form);
   }
 
-  /** Point 100% of traffic at `versionId`. Returns the deployment ID. */
+  /**
+   * Point 100% of traffic at `versionId`. Returns the deployment ID.
+   * Provenance rides in the message: `workers/triggered_by` looks settable in the API schema
+   * but the platform rejects client-supplied values (error 10210), so don't send it.
+   */
   async deployVersion(
     workerName: string,
     versionId: string,
@@ -132,8 +136,7 @@ export class WorkersApi {
       strategy: "percentage",
       versions: [{ version_id: versionId, percentage: 100 }],
       annotations: {
-        "workers/message": message,
-        "workers/triggered_by": "gatekeeper-deploy",
+        "workers/message": `[gatekeeper-deploy] ${message}`,
       },
     }), { "Content-Type": "application/json" });
   }

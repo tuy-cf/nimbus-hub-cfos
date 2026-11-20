@@ -7,11 +7,13 @@ import {
 import { skipRpcValidation, validateRpc } from "capnweb-validate";
 import type {
   AccountDescription,
+  ActionDescription,
   AgentCatalog,
   ApprovalQueue,
   Gatekeeper,
   GatekeeperConnectCallback,
   GatekeeperConnectOptions,
+  GatekeeperUiFrame,
   GatekeeperUser,
   GatekeeperUserVerifier,
   ResourceConfiguratorFrame,
@@ -57,6 +59,8 @@ export const DEPLOY_WORKER_RESOURCE: SupportedResource = {
     "Deploy application code to one Worker on the workshop account. Bound resources " +
     "(KV, D1, R2) must belong to that Worker.",
   icon: DEPLOY_ICON,
+  creatable: true,
+  creationConfigurator: true,
 };
 
 type ObservationQueue = Pick<ApprovalQueue, "authorizeObservation"> &
@@ -64,11 +68,12 @@ type ObservationQueue = Pick<ApprovalQueue, "authorizeObservation"> &
 
 /** Props the account imbues each DeployGatekeeper facet with (see getGatekeeperClassFor). */
 export type DeployGatekeeperProps = {
-  workerName: string;
+  /** Null while the connection is a simulated creation; applyCreation picks the real Worker. */
+  workerName: string | null;
 };
 
 /** Parse `deploy://workers/<name>` and enforce the deployment's prefix. */
-export function parseDeployUrl(url: string, prefix: string): DeployGatekeeperProps {
+export function parseDeployUrl(url: string, prefix: string): { workerName: string } {
   let match = /^deploy:\/\/workers\/([a-z0-9][a-z0-9-]*[a-z0-9])\/?$/.exec(url);
   if (!match) {
     throw new Error(
@@ -105,6 +110,28 @@ export function describeDeployAccount(): AccountDescription {
     displayName: "Workshop Deploy",
     avatar: DEPLOY_ICON,
   };
+}
+
+/**
+ * Resolve an approved creation to its real Worker: the configurator's collected URL is required,
+ * must name a deployable Worker (prefix), and that Worker must already be provisioned. No cloud
+ * resource is created — roster Workers already exist, so this is idempotent by construction.
+ */
+export async function resolveCreation(
+  configuration: string | null,
+  prefix: string,
+  api: WorkersApi,
+): Promise<{ workerName: string; resourceUrl: string }> {
+  if (configuration === null) {
+    throw new Error(
+      "Choose a Worker in the creation configurator: this connection deploys to one " +
+      "roster-provisioned Worker on the workshop account.",
+    );
+  }
+  let { workerName } = parseDeployUrl(configuration, prefix);
+  let settings = await api.getScriptSettings(workerName);
+  if (settings === null) throw notFound(workerName);
+  return { workerName, resourceUrl: configuration };
 }
 
 function notFound(workerName: string): Error {
@@ -268,9 +295,20 @@ export class DeploySessionImpl extends RpcTarget implements DeploySession {
 export class DeployGatekeeper extends DurableObject<Cloudflare.Env, DeployGatekeeperProps>
     implements Gatekeeper<DeploySession> {
   async describe(): Promise<ResourceDescription> {
+    let workerName = this.ctx.props.workerName;
+    if (workerName === null) {
+      // Simulated creation: the approver picks the Worker in the creation configurator.
+      return {
+        url: DEPLOY_RESOURCE_URL_PATTERN,
+        title: "New Workshop Worker connection",
+        snippet: "Choose a roster-provisioned Worker for this workspace to deploy to.",
+        suggestedBindingName: "DEPLOY",
+        tsType: "DeploySession",
+      };
+    }
     return {
-      url: `deploy://workers/${this.ctx.props.workerName}`,
-      title: `Deploy to ${this.ctx.props.workerName}`,
+      url: `deploy://workers/${workerName}`,
+      title: `Deploy to ${workerName}`,
       snippet: "Deploy application code to this workshop Worker, with validation and rollback.",
       suggestedBindingName: "DEPLOY",
       tsType: "DeploySession",
@@ -291,13 +329,35 @@ export class DeployGatekeeper extends DurableObject<Cloudflare.Env, DeployGateke
   }
 
   async startSession(approvalQueue: RpcStub<ApprovalQueue>): Promise<DeploySession> {
+    let workerName = this.ctx.props.workerName;
+    if (workerName === null) {
+      throw new Error(
+        "This Workshop Worker connection is not approved yet: its Worker is chosen when " +
+        "the creation is approved.",
+      );
+    }
     return new DeploySessionImpl(
       approvalQueue.dup(),
       new WorkersApi(this.env.CLOUDFLARE_API_TOKEN, this.env.CLOUDFLARE_ACCOUNT_ID),
-      this.ctx.props.workerName,
+      workerName,
       this.env.DEPLOY_WORKER_PREFIX,
       this.env.DEPLOY_COMPATIBILITY_DATE,
     );
+  }
+
+  async applyCreation(
+    _creator: Fetcher<GatekeeperUserVerifier>,
+    configuration: string | null,
+  ): Promise<{ class: DurableObjectClass<Gatekeeper<DeploySession>>; resourceUrl: string }> {
+    let { workerName, resourceUrl } = await resolveCreation(
+      configuration,
+      this.env.DEPLOY_WORKER_PREFIX,
+      new WorkersApi(this.env.CLOUDFLARE_API_TOKEN, this.env.CLOUDFLARE_ACCOUNT_ID),
+    );
+    return {
+      class: this.ctx.exports.DeployGatekeeper({ props: { workerName } }),
+      resourceUrl,
+    };
   }
 
   async addObserver(_id: string, _user: Fetcher<GatekeeperUserVerifier>): Promise<void> {}
@@ -335,7 +395,7 @@ export class DeployAccount extends WorkerEntrypoint<Cloudflare.Env> implements G
     };
   }
 
-  async startResourceConfigurator(resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
+  #configurator(resourceUrlPattern: string): GatekeeperUiFrame {
     if (resourceUrlPattern !== DEPLOY_RESOURCE_URL_PATTERN) {
       throw new Error(`Unsupported deploy resource configurator type: ${resourceUrlPattern}`);
     }
@@ -346,6 +406,14 @@ export class DeployAccount extends WorkerEntrypoint<Cloudflare.Env> implements G
         new WorkersApi(this.env.CLOUDFLARE_API_TOKEN, this.env.CLOUDFLARE_ACCOUNT_ID),
       )),
     };
+  }
+
+  async startResourceConfigurator(resourceUrlPattern: string): Promise<ResourceConfiguratorFrame> {
+    return this.#configurator(resourceUrlPattern);
+  }
+
+  async startCreationConfigurator(resourceUrlPattern: string): Promise<GatekeeperUiFrame> {
+    return this.#configurator(resourceUrlPattern);
   }
 
   async ensureResources(resourceUrlPatterns: string[]): Promise<{ url?: string }> {
@@ -392,6 +460,30 @@ export class GatekeeperVendor extends WorkerEntrypoint<Cloudflare.Env> {
   @skipRpcValidation()
   async createAccount(): Promise<Fetcher<GatekeeperUser>> {
     return this.ctx.exports.DeployAccount({});
+  }
+
+  @skipRpcValidation()
+  async createResource(resourceUrlPattern: string, title: string): Promise<{
+    class: DurableObjectClass<Gatekeeper<DeploySession>>;
+    resource: SupportedResource;
+    action: ActionDescription;
+  }> {
+    if (resourceUrlPattern !== DEPLOY_RESOURCE_URL_PATTERN) {
+      throw new Error(`Unsupported deploy resource pattern: ${resourceUrlPattern}`);
+    }
+    return {
+      // Simulated: no Worker chosen yet; applyCreation resolves it on approval.
+      class: this.ctx.exports.DeployGatekeeper({ props: { workerName: null } }),
+      resource: DEPLOY_WORKER_RESOURCE,
+      action: {
+        title: `Connect Workshop Worker: ${title}`,
+        description:
+          "Connect one roster-provisioned Worker on the workshop account so this workspace can " +
+          "deploy application code to it, with validation and rollback. Choose the Worker in the " +
+          "creation configurator. No new Worker or other cloud resource is provisioned by this action.",
+        implementsRevert: false,
+      },
+    };
   }
 
   connectAccount(

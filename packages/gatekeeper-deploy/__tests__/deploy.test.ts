@@ -13,6 +13,7 @@ import {
   describeDeployAccount,
   describeDeployVendor,
   parseDeployUrl,
+  resolveCreation,
 } from "../src/deploy.js";
 import type { DeploySpec } from "../src/types.js";
 
@@ -31,6 +32,9 @@ describe("deploy gatekeeper metadata", () => {
     });
     expect(describeDeployAccount().displayName).toBe("Workshop Deploy");
     expect(DEPLOY_WORKER_RESOURCE.urlPattern).toBe("deploy://workers/*");
+    // The agent-driven connection flow (createExternalResource) requires both flags.
+    expect(DEPLOY_WORKER_RESOURCE.creatable).toBe(true);
+    expect(DEPLOY_WORKER_RESOURCE.creationConfigurator).toBe(true);
   });
 });
 
@@ -286,5 +290,32 @@ describe("DeploySessionImpl", () => {
     expect(status.current?.deployed).toBe(true);
     expect(status.recentVersions).toHaveLength(2);
     expect(status.compatibilityDate).toBe("2026-09-04");
+  });
+});
+
+describe("resolveCreation", () => {
+  const URL = "deploy://workers/changeguard-terrific-tiger";
+
+  it("requires the configurator's choice", async () => {
+    await expect(resolveCreation(null, "changeguard-", {} as WorkersApi))
+      .rejects.toThrow(/Choose a Worker/);
+  });
+
+  it("rejects a Worker outside the prefix", async () => {
+    await expect(resolveCreation("deploy://workers/other-worker", "changeguard-", {} as WorkersApi))
+      .rejects.toThrow(/not deployable/);
+  });
+
+  it("rejects an unprovisioned Worker", async () => {
+    await expect(resolveCreation(URL, "changeguard-", {
+      getScriptSettings: async () => null,
+    } as unknown as WorkersApi)).rejects.toThrow(/not provisioned/);
+  });
+
+  it("resolves a provisioned Worker without creating anything", async () => {
+    let result = await resolveCreation(URL, "changeguard-", {
+      getScriptSettings: async () => ({ compatibility_date: "2026-09-04" }),
+    } as unknown as WorkersApi);
+    expect(result).toEqual({ workerName: "changeguard-terrific-tiger", resourceUrl: URL });
   });
 });

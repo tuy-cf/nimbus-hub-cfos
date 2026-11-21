@@ -224,6 +224,41 @@ describe("DeploySessionImpl", () => {
     expect(queue.observations).toHaveLength(1);
   });
 
+  it("reports the public URL from the deployment's pattern when one is set", async () => {
+    let session = new DeploySessionImpl(
+      fakeQueue(),
+      { getSubdomain: async () => null } as unknown as WorkersApi,
+      "changeguard-terrific-tiger",
+      "changeguard-",
+      "2026-09-04",
+      "https://app.{slot}.nimbuslabs.io",
+    );
+    let target = await session.getTarget();
+    expect(target.url).toBe("https://app.terrific-tiger.nimbuslabs.io");
+  });
+
+  it("supports {workerName} in the URL pattern and still falls back to workers.dev without one", async () => {
+    let session = new DeploySessionImpl(
+      fakeQueue(),
+      { getSubdomain: async () => null } as unknown as WorkersApi,
+      "changeguard-terrific-tiger",
+      "changeguard-",
+      "2026-09-04",
+      "https://{workerName}.apps.example.com",
+    );
+    expect((await session.getTarget()).url)
+      .toBe("https://changeguard-terrific-tiger.apps.example.com");
+    // No pattern: the account has no workers.dev subdomain, so there is no URL to report.
+    let bare = new DeploySessionImpl(
+      fakeQueue(),
+      { getSubdomain: async () => null } as unknown as WorkersApi,
+      "changeguard-terrific-tiger",
+      "changeguard-",
+      "2026-09-04",
+    );
+    expect((await bare.getTarget()).url).toBeNull();
+  });
+
   it("refuses to deploy a spec with validation errors", async () => {
     let session = new DeploySessionImpl(
       fakeQueue(),

@@ -290,6 +290,18 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
     (service) => service.binding === "FRONTEND_ERROR_REPORTER"), false);
 });
 
+test("passes the deploy gatekeeper's publicUrlPattern through to its vars", async () => {
+  const config = variant((c) => {
+    c.deployGatekeeper.publicUrlPattern = "https://app.{slot}.example.com";
+  });
+  const generated = generateConfigs(config, await baseConfigs(), catalog);
+  assert.equal(generated.deployGatekeeper!.vars!.DEPLOY_PUBLIC_URL_PATTERN,
+    "https://app.{slot}.example.com");
+  // Without a pattern, the var is absent and URLs fall back to workers.dev.
+  const bare = generateConfigs(validConfig, await baseConfigs(), catalog);
+  assert.equal("DEPLOY_PUBLIC_URL_PATTERN" in bare.deployGatekeeper!.vars!, false);
+});
+
 test("gives the router the public route, the frontend, and every service binding", async () => {
   const bases = await baseConfigs();
   const generated = generateConfigs(validConfig, bases, catalog);

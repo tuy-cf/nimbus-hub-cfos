@@ -824,6 +824,9 @@ export function generateConfigs(
       CLOUDFLARE_ACCOUNT_ID: config.accountId,
       DEPLOY_WORKER_PREFIX: config.deployGatekeeper!.workerPrefix,
       DEPLOY_COMPATIBILITY_DATE: config.deployGatekeeper!.compatibilityDate ?? "2026-09-04",
+      ...(config.deployGatekeeper!.publicUrlPattern
+        ? { DEPLOY_PUBLIC_URL_PATTERN: config.deployGatekeeper!.publicUrlPattern }
+        : {}),
     };
     // The account credential the gatekeeper deploys with. Never a var: `cf-os secrets` / wrangler
     // secret put keeps it off disk, and wrangler refuses the deploy while it is missing.

@@ -12,5 +12,7 @@ declare namespace Cloudflare {
     DEPLOY_WORKER_PREFIX: string;
     DEPLOY_COMPATIBILITY_DATE: string;
     CLOUDFLARE_API_TOKEN: string;
+    /** Optional public URL template for deployed apps, e.g. "https://app.{slot}.example.com". */
+    DEPLOY_PUBLIC_URL_PATTERN?: string;
   }
 }

@@ -150,6 +150,13 @@ export interface DeploymentConfig {
     workerPrefix: string;
     /** Default compatibility date for deploys when a spec omits one. */
     compatibilityDate?: string;
+    /**
+     * Optional public URL template reported by getTarget()/getStatus()/deploy()/rollback(),
+     * e.g. "https://app.{slot}.example.com" ({slot} = worker name minus workerPrefix,
+     * {workerName} = full worker name). Without it, URLs come from the account's workers.dev
+     * subdomain, which may be disabled.
+     */
+    publicUrlPattern?: string;
   };
   /** Private explicit-issue destination. */
   errorReporting: { enabled: boolean; environment?: string; release?: string | null };

@@ -31,7 +31,10 @@
   // Workers Scripts:Edit + storage read on this account.
   "deployGatekeeper": {
     "enabled": true,
-    "workerPrefix": "changeguard-"
+    "workerPrefix": "changeguard-",
+    // Attendee apps are served at app.<slot>.nimbuslabs.io (custom domain + per-slot Access,
+    // wired by the facilitator); workers.dev is disabled on this account, so report these URLs.
+    "publicUrlPattern": "https://app.{slot}.nimbuslabs.io"
   },
 
   // Self-hosted Access application protecting os.nimbuslabs.io; One-time PIN

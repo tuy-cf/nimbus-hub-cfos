@@ -161,6 +161,7 @@ export class DeploySessionImpl extends RpcTarget implements DeploySession {
   readonly #workerName: string;
   readonly #prefix: string;
   readonly #defaultCompatibilityDate: string;
+  readonly #publicUrlPattern?: string;
 
   constructor(
     queue: ObservationQueue,
@@ -168,6 +169,7 @@ export class DeploySessionImpl extends RpcTarget implements DeploySession {
     workerName: string,
     prefix: string,
     defaultCompatibilityDate: string,
+    publicUrlPattern?: string,
   ) {
     super();
     this.#queue = queue;
@@ -175,9 +177,20 @@ export class DeploySessionImpl extends RpcTarget implements DeploySession {
     this.#workerName = workerName;
     this.#prefix = prefix;
     this.#defaultCompatibilityDate = defaultCompatibilityDate;
+    this.#publicUrlPattern = publicUrlPattern;
   }
 
   async #url(): Promise<string | null> {
+    // A deployment whose public hostnames are wired up (custom domain, Access) reports those;
+    // without one, fall back to the account's workers.dev subdomain (which may be disabled).
+    if (this.#publicUrlPattern) {
+      let slot = this.#workerName.startsWith(this.#prefix)
+        ? this.#workerName.slice(this.#prefix.length)
+        : this.#workerName;
+      return this.#publicUrlPattern
+        .replaceAll("{workerName}", this.#workerName)
+        .replaceAll("{slot}", slot);
+    }
     let subdomain = await this.#api.getSubdomain(this.#workerName);
     return subdomain ? `https://${this.#workerName}.${subdomain}.workers.dev` : null;
   }
@@ -342,6 +355,7 @@ export class DeployGatekeeper extends DurableObject<Cloudflare.Env, DeployGateke
       workerName,
       this.env.DEPLOY_WORKER_PREFIX,
       this.env.DEPLOY_COMPATIBILITY_DATE,
+      this.env.DEPLOY_PUBLIC_URL_PATTERN,
     );
   }
 

@@ -92,7 +92,7 @@ export function parseDeployUrl(url: string, prefix: string): { workerName: strin
 export function describeDeployVendor(): VendorDescription {
   return {
     displayName: "Workshop Deploy",
-    url: "https://github.com/tuy-cf/noodle-hub-cfos",
+    url: "https://github.com/tuy-cf/nimbus-hub-cfos",
     logo: DEPLOY_ICON,
     color: "#7C3AED",
     tagline: "Deploy apps to your workshop Worker",
